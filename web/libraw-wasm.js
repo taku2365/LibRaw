@@ -149,6 +149,47 @@ export class LibRawImage {
         if (options.halfSize !== undefined) {
             this.processor.setHalfSize(options.halfSize);
         }
+        
+        // Extended parameters
+        if (options.highlight !== undefined && typeof this.processor.setHighlight === 'function') {
+            this.processor.setHighlight(options.highlight);
+        }
+        if (options.gamma && typeof this.processor.setGamma === 'function') {
+            this.processor.setGamma(options.gamma[0], options.gamma[1]);
+        }
+        if (options.noiseThreshold !== undefined && typeof this.processor.setNoiseThreshold === 'function') {
+            this.processor.setNoiseThreshold(options.noiseThreshold);
+        }
+        if (options.medianPasses !== undefined && typeof this.processor.setMedianPasses === 'function') {
+            this.processor.setMedianPasses(options.medianPasses);
+        }
+        if (options.exposure && typeof this.processor.setExposure === 'function') {
+            this.processor.setExposure(options.exposure.shift, options.exposure.preserve);
+        }
+        if (options.autoBright && typeof this.processor.setAutoBright === 'function') {
+            this.processor.setAutoBright(options.autoBright.enabled, options.autoBright.threshold);
+        }
+        if (options.customWB && typeof this.processor.setCustomWB === 'function') {
+            this.processor.setCustomWB(options.customWB.r, options.customWB.g1, options.customWB.g2, options.customWB.b);
+        }
+        if (options.fourColorRGB !== undefined && typeof this.processor.setFourColorRGB === 'function') {
+            this.processor.setFourColorRGB(options.fourColorRGB);
+        }
+        if (options.dcbIterations !== undefined && typeof this.processor.setDCBIterations === 'function') {
+            this.processor.setDCBIterations(options.dcbIterations);
+        }
+        if (options.dcbEnhance !== undefined && typeof this.processor.setDCBEnhance === 'function') {
+            this.processor.setDCBEnhance(options.dcbEnhance);
+        }
+        if (options.outputBPS !== undefined && typeof this.processor.setOutputBPS === 'function') {
+            this.processor.setOutputBPS(options.outputBPS);
+        }
+        if (options.userBlack !== undefined && typeof this.processor.setUserBlack === 'function') {
+            this.processor.setUserBlack(options.userBlack);
+        }
+        if (options.aberrationCorrection && typeof this.processor.setAberrationCorrection === 'function') {
+            this.processor.setAberrationCorrection(options.aberrationCorrection.r, options.aberrationCorrection.b);
+        }
 
         // Process the image
         const success = this.processor.process();

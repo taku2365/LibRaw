@@ -246,6 +246,34 @@
             </div>
             
             <div class="control-group">
+                <label for="highlight">Highlight Recovery</label>
+                <select id="highlight">
+                    <option value="0">Clip</option>
+                    <option value="1">Unclip</option>
+                    <option value="2" selected>Blend</option>
+                    <option value="3">Rebuild</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="exposure">Exposure</label>
+                <input type="range" id="exposure" min="-2" max="2" step="0.1" value="0">
+                <span id="exposureValue">0.0 EV</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="noiseReduction">Noise Reduction</label>
+                <input type="range" id="noiseReduction" min="0" max="500" step="50" value="0">
+                <span id="noiseReductionValue">0</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="blackLevel">Black Level</label>
+                <input type="range" id="blackLevel" min="0" max="512" step="16" value="0">
+                <span id="blackLevelValue">Auto</span>
+            </div>
+            
+            <div class="control-group">
                 <label for="halfSize">
                     <input type="checkbox" id="halfSize"> Half size (faster)
                 </label>
@@ -394,13 +422,23 @@
             try {
                 // Get processing options
                 const wbSelect = document.getElementById('whiteBalance').value;
+                const exposureValue = parseFloat(document.getElementById('exposure').value);
+                const noiseValue = parseInt(document.getElementById('noiseReduction').value);
+                const blackValue = parseInt(document.getElementById('blackLevel').value);
+                
                 const options = {
                     useCameraWB: wbSelect === 'camera',
                     useAutoWB: wbSelect === 'auto',
                     outputColor: parseInt(document.getElementById('colorSpace').value),
                     quality: parseInt(document.getElementById('quality').value),
                     brightness: parseFloat(document.getElementById('brightness').value),
-                    halfSize: document.getElementById('halfSize').checked
+                    halfSize: document.getElementById('halfSize').checked,
+                    // Extended parameters
+                    highlight: parseInt(document.getElementById('highlight').value),
+                    exposure: exposureValue !== 0 ? { shift: exposureValue, preserve: 1.0 } : undefined,
+                    noiseThreshold: noiseValue,
+                    medianPasses: noiseValue > 0 ? Math.min(Math.floor(noiseValue / 100), 5) : 0,
+                    userBlack: blackValue > 0 ? blackValue : undefined
                 };
                 
                 // Process the image
@@ -434,6 +472,24 @@
         // Brightness slider
         document.getElementById('brightness').addEventListener('input', (e) => {
             document.getElementById('brightnessValue').textContent = e.target.value;
+        });
+        
+        // Exposure slider
+        document.getElementById('exposure').addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            const sign = value >= 0 ? '+' : '';
+            document.getElementById('exposureValue').textContent = `${sign}${value.toFixed(1)} EV`;
+        });
+        
+        // Noise reduction slider
+        document.getElementById('noiseReduction').addEventListener('input', (e) => {
+            document.getElementById('noiseReductionValue').textContent = e.target.value;
+        });
+        
+        // Black level slider
+        document.getElementById('blackLevel').addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            document.getElementById('blackLevelValue').textContent = value === 0 ? 'Auto' : value;
         });
         
         // JPEG quality slider
