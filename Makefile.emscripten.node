@@ -1,0 +1,114 @@
+# LibRaw WebAssembly build makefile for Node.js using Emscripten
+
+# Emscripten compiler
+CC=emcc
+CXX=em++
+AR=emar
+
+# Base flags
+CFLAGS=-O3 -I. -DLIBRAW_NOTHREADS -DUSE_ZLIB -s USE_ZLIB=1
+CXXFLAGS=$(CFLAGS)
+
+# Emscripten specific flags for Node.js
+EMFLAGS=-s MODULARIZE=1 \
+        -s EXPORT_NAME="LibRaw" \
+        -s ALLOW_MEMORY_GROWTH=1 \
+        -s FILESYSTEM=0 \
+        -s ENVIRONMENT='node' \
+        -s SINGLE_FILE=1 \
+        -s WASM=1 \
+        -s NO_EXIT_RUNTIME=1 \
+        -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","allocate","intArrayFromString","ALLOC_NORMAL","UTF8ToString","stringToUTF8"]' \
+        -s EXPORTED_FUNCTIONS='["_malloc","_free"]'
+
+# Source files (minimal set for basic functionality)
+LIB_OBJECTS_WASM= \
+  object/libraw_datastream.wasm.o object/libraw_c_api.wasm.o \
+  object/cameralist.wasm.o object/fuji_compressed.wasm.o \
+  object/crx.wasm.o object/pana8.wasm.o object/fp_dng.wasm.o \
+  object/decoders_libraw.wasm.o object/unpack.wasm.o object/unpack_thumb.wasm.o \
+  object/colorconst.wasm.o object/utils_libraw.wasm.o object/init_close_utils.wasm.o \
+  object/decoder_info.wasm.o object/open.wasm.o object/thumb_utils.wasm.o \
+  object/subtract_black.wasm.o object/postprocessing_utils.wasm.o \
+  object/dcraw_process.wasm.o object/raw2image.wasm.o object/mem_image.wasm.o \
+  object/read_utils.wasm.o object/curves.wasm.o object/utils_dcraw.wasm.o \
+  object/colordata.wasm.o object/decoders_dcraw.wasm.o \
+  object/decoders_libraw_dcrdefs.wasm.o object/generic.wasm.o \
+  object/kodak_decoders.wasm.o object/dng.wasm.o object/smal.wasm.o \
+  object/load_mfbacks.wasm.o object/identify.wasm.o object/identify_tools.wasm.o \
+  object/misc_parsers.wasm.o object/wblists.wasm.o \
+  object/postprocessing_aux.wasm.o object/postprocessing_utils_dcrdefs.wasm.o \
+  object/aspect_ratio.wasm.o object/misc_demosaic.wasm.o \
+  object/ahd_demosaic.wasm.o object/dcb_demosaic.wasm.o \
+  object/file_write.wasm.o object/tiff_writer.wasm.o \
+  object/sony.wasm.o object/nikon.wasm.o object/canon.wasm.o \
+  object/olympus.wasm.o object/fuji.wasm.o object/pentax.wasm.o \
+  object/samsung.wasm.o object/leica.wasm.o \
+  object/tiff.wasm.o object/kodak.wasm.o object/minolta.wasm.o \
+  object/normalize_model.wasm.o object/hasselblad_model.wasm.o \
+  object/makernotes.wasm.o object/exif_gps.wasm.o \
+  object/mediumformat.wasm.o object/ciff.wasm.o object/cr3_parser.wasm.o \
+  object/epson.wasm.o object/p1.wasm.o object/libraw_wasm_wrapper.wasm.o \
+  object/canon_600.wasm.o object/olympus14.wasm.o object/sonycc.wasm.o \
+  object/losslessjpeg.wasm.o object/adobepano.wasm.o \
+  object/xtrans_demosaic.wasm.o object/dht_demosaic.wasm.o \
+  object/aahd_demosaic.wasm.o object/phaseone_processing.wasm.o \
+  object/libraw_wasm_stubs.wasm.o
+
+# Targets
+all: wasm/libraw-node.js
+
+wasm/libraw-node.js: lib/libraw_wasm.a wasm/libraw_wasm_wrapper.cpp
+	$(CXX) $(CXXFLAGS) $(EMFLAGS) \
+	  --bind \
+	  -o wasm/libraw-node.js \
+	  wasm/libraw_wasm_wrapper.cpp \
+	  lib/libraw_wasm.a \
+	  -s USE_ZLIB=1
+
+lib/libraw_wasm.a: $(LIB_OBJECTS_WASM)
+	rm -f lib/libraw_wasm.a
+	$(AR) crv lib/libraw_wasm.a $(LIB_OBJECTS_WASM)
+
+# Pattern rules for WebAssembly objects
+object/%.wasm.o: src/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/decoders/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/decompressors/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/demosaic/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/integration/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/metadata/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/postprocessing/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/preprocessing/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/tables/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/utils/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: src/write/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: wasm/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+object/%.wasm.o: internal/%.cpp
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+clean:
+	rm -f lib/libraw_wasm.a $(LIB_OBJECTS_WASM) wasm/libraw-node.js

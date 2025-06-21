@@ -29,22 +29,49 @@ make -f Makefile.emscripten clean || true
 # Create necessary directories
 mkdir -p object lib wasm web
 
-# Build LibRaw WASM
-echo "Building LibRaw WebAssembly module..."
-make -f Makefile.emscripten -j$(nproc)
+# Determine build target
+BUILD_TARGET="${1:-all}"
+
+if [ "$BUILD_TARGET" = "browser" ] || [ "$BUILD_TARGET" = "all" ]; then
+    echo "Building LibRaw WebAssembly module for browser (ES6)..."
+    make -f Makefile.emscripten -j$(nproc)
+fi
+
+if [ "$BUILD_TARGET" = "node" ] || [ "$BUILD_TARGET" = "all" ]; then
+    echo "Building LibRaw WebAssembly module for Node.js (CommonJS)..."
+    make -f Makefile.emscripten.node -j$(nproc)
+fi
 
 # Check if build succeeded
-if [ -f "wasm/libraw.js" ]; then
+SUCCESS=true
+if [ "$BUILD_TARGET" = "browser" ] || [ "$BUILD_TARGET" = "all" ]; then
+    if [ ! -f "wasm/libraw.js" ]; then
+        echo "Browser build failed!"
+        SUCCESS=false
+    fi
+fi
+
+if [ "$BUILD_TARGET" = "node" ] || [ "$BUILD_TARGET" = "all" ]; then
+    if [ ! -f "wasm/libraw-node.js" ]; then
+        echo "Node.js build failed!"
+        SUCCESS=false
+    fi
+fi
+
+if [ "$SUCCESS" = true ]; then
     echo "Build successful!"
     echo ""
     echo "Files generated:"
-    echo "  - wasm/libraw.js (ES6 module)"
-    echo "  - wasm/libraw.wasm (embedded in JS)"
+    [ -f "wasm/libraw.js" ] && echo "  - wasm/libraw.js (ES6 module for browser/worker)"
+    [ -f "wasm/libraw-node.js" ] && echo "  - wasm/libraw-node.js (CommonJS module for Node.js)"
     echo ""
     echo "To test the demo:"
     echo "  1. Start a local web server:"
-    echo "     python3 -m http.server 8000"
+    echo "     npm run serve"
     echo "  2. Open http://localhost:8000/web/"
+    echo ""
+    echo "To run tests:"
+    echo "  npm test"
     echo ""
 else
     echo "Build failed!"

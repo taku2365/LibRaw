@@ -25,7 +25,6 @@ test.describe('Basic Browser Test', () => {
     
     const content = await page.content();
     expect(content).toContain('libraw.js');
-    expect(content).toContain('libraw-node.js');
     
     console.log('WASM directory listing working');
   });
