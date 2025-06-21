@@ -1,0 +1,38 @@
+# Build artifacts
+object/
+lib/
+wasm/*.wasm
+test-results/
+playwright-report/
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment
+.env
+.env.local
+
+# Generated documentation
+ARW_TEST_SUCCESS_REPORT.md
+NODE_TESTING_SUCCESS.md
+PLAYWRIGHT_BROWSER_TESTING.md
+
+# Test images (large files)
+test-image/*.ARW
+test-image/*.NEF
+test-image/*.CR2
+test-image/*.DNG
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log

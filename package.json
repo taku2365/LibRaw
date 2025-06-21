@@ -1,0 +1,32 @@
+{
+  "name": "libraw",
+  "version": "1.0.0",
+  "description": "This directory contains the WebAssembly build configuration for LibRaw, allowing RAW image processing directly in web browsers.",
+  "main": "cli-tool.js",
+  "directories": {
+    "doc": "doc",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "npm run test:node && npm run test:browser-sim",
+    "test:node": "node test/node-test.cjs && node test/arw-working-test.cjs && node test/jpeg-download-test.cjs",
+    "test:browser-sim": "node test/browser-simulation.cjs",
+    "test:playwright": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "serve": "node server.js",
+    "test:arw": "node test/arw-working-test.cjs",
+    "test:all": "npm run test:node && npm run test:browser-sim"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.53.1"
+  },
+  "dependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "libraw-wasm-test",
+  "version": "1.0.0",
+  "description": "LibRaw WebAssembly test suite",
+  "main": "test.js",
+  "type": "module",
+  "scripts": {
+    "test": "node test.js",
+    "debug": "node debug-test.js"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibRaw WebAssembly Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            background-color: #e0e0e0;
+        }
+        
+        .status.ready {
+            background-color: #4caf50;
+            color: white;
+        }
+        
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background-color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            border-color: #666;
+            background-color: #fafafa;
+        }
+        
+        .upload-area.dragover {
+            border-color: #4caf50;
+            background-color: #e8f5e9;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+        }
+        
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .control-group label {
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #666;
+        }
+        
+        .control-group input,
+        .control-group select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        button {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        #downloadBtn {
+            background-color: #2196f3;
+        }
+        
+        #downloadBtn:hover:not(:disabled) {
+            background-color: #1976d2;
+        }
+        
+        #previewBtn {
+            background-color: #ff9800;
+        }
+        
+        #previewBtn:hover:not(:disabled) {
+            background-color: #f57c00;
+        }
+        
+        .results {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .result-panel {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .result-panel h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        #imageOutput {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        #metadata {
+            font-family: monospace;
+            white-space: pre-wrap;
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4caf50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            color: #f44336;
+            padding: 10px;
+            background-color: #ffebee;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .info {
+            color: #2196f3;
+            padding: 10px;
+            background-color: #e3f2fd;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LibRaw WebAssembly Demo</h1>
+        
+        <div id="status" class="status">Initializing LibRaw...</div>
+        
+        <div class="upload-area" id="uploadArea">
+            <p>Drop a RAW file here or click to select</p>
+            <p><small>Supported formats: CR2, NEF, ARW, DNG, RAF, ORF, and more</small></p>
+            <input type="file" id="fileInput" accept=".cr2,.nef,.arw,.dng,.raf,.orf,.rw2,.pef,.srw,.x3f,.raw">
+        </div>
+        
+        <div class="controls" id="controls" style="display: none;">
+            <div class="control-group">
+                <label for="whiteBalance">White Balance</label>
+                <select id="whiteBalance">
+                    <option value="camera">Camera WB</option>
+                    <option value="auto">Auto WB</option>
+                    <option value="none">None</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="colorSpace">Color Space</label>
+                <select id="colorSpace">
+                    <option value="1">sRGB</option>
+                    <option value="2">Adobe RGB</option>
+                    <option value="3">Wide Gamut</option>
+                    <option value="4">ProPhoto RGB</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="quality">Interpolation Quality</label>
+                <select id="quality">
+                    <option value="0">Linear</option>
+                    <option value="1">VNG</option>
+                    <option value="2">PPG</option>
+                    <option value="3" selected>AHD</option>
+                    <option value="4">DCB</option>
+                    <option value="11">DHT</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="brightness">Brightness</label>
+                <input type="range" id="brightness" min="0.5" max="2" step="0.1" value="1">
+                <span id="brightnessValue">1.0</span>
+            </div>
+            
+            <div class="control-group">
+                <label for="halfSize">
+                    <input type="checkbox" id="halfSize"> Half size (faster)
+                </label>
+            </div>
+            
+            <div class="control-group">
+                <button id="processBtn" disabled>Process RAW</button>
+            </div>
+            
+            <div class="control-group">
+                <label for="jpegQuality">JPEG Quality</label>
+                <input type="range" id="jpegQuality" min="10" max="100" step="5" value="85">
+                <span id="jpegQualityValue">85</span>
+            </div>
+            
+            <div class="control-group">
+                <button id="downloadBtn" disabled>Download JPEG</button>
+                <button id="previewBtn" disabled>Preview JPEG</button>
+            </div>
+        </div>
+        
+        <div id="results" class="results" style="display: none;">
+            <div class="result-panel">
+                <h2>Processed Image</h2>
+                <img id="imageOutput" alt="Processed image will appear here">
+                <div id="imageInfo"></div>
+            </div>
+            
+            <div class="result-panel">
+                <h2>Metadata</h2>
+                <div id="metadata"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { LibRawJS, ColorSpace, Quality } from './libraw-wasm.js';
+        
+        let libraw = null;
+        let currentImage = null;
+        
+        // Initialize LibRaw
+        async function init() {
+            try {
+                libraw = new LibRawJS();
+                await libraw.init('../wasm/libraw.js');
+                
+                const version = libraw.getVersion();
+                const cameraCount = libraw.getCameraCount();
+                
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').innerHTML = 
+                    `LibRaw ${version} ready - Supporting ${cameraCount} cameras`;
+            } catch (error) {
+                document.getElementById('status').innerHTML = 
+                    `<span class="error">Failed to initialize LibRaw: ${error.message}</span>`;
+            }
+        }
+        
+        // File handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+        
+        // File processing
+        async function handleFile(file) {
+            if (!libraw) {
+                alert('LibRaw not initialized yet');
+                return;
+            }
+            
+            document.getElementById('controls').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('processBtn').disabled = true;
+            document.getElementById('downloadBtn').disabled = true;
+            document.getElementById('previewBtn').disabled = true;
+            
+            const status = document.getElementById('status');
+            status.innerHTML = `Loading ${file.name}...<span class="loading"></span>`;
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                
+                if (currentImage) {
+                    currentImage.dispose();
+                }
+                
+                currentImage = await libraw.loadRAW(arrayBuffer);
+                
+                // Display metadata
+                const metadata = currentImage.getMetadata();
+                displayMetadata(metadata);
+                
+                // Try to display thumbnail
+                const thumbUrl = await currentImage.getThumbnailDataURL();
+                if (thumbUrl) {
+                    document.getElementById('imageOutput').src = thumbUrl;
+                    document.getElementById('results').style.display = 'grid';
+                    document.getElementById('imageInfo').innerHTML = 
+                        '<p class="info">Showing embedded thumbnail. Click "Process RAW" for full quality.</p>';
+                }
+                
+                document.getElementById('processBtn').disabled = false;
+                status.innerHTML = `${file.name} loaded successfully`;
+            } catch (error) {
+                status.innerHTML = `<span class="error">Error loading file: ${error.message}</span>`;
+            }
+        }
+        
+        // Process button
+        document.getElementById('processBtn').addEventListener('click', async () => {
+            if (!currentImage) return;
+            
+            const btn = document.getElementById('processBtn');
+            const status = document.getElementById('status');
+            
+            btn.disabled = true;
+            status.innerHTML = 'Processing RAW image...<span class="loading"></span>';
+            
+            try {
+                // Get processing options
+                const wbSelect = document.getElementById('whiteBalance').value;
+                const options = {
+                    useCameraWB: wbSelect === 'camera',
+                    useAutoWB: wbSelect === 'auto',
+                    outputColor: parseInt(document.getElementById('colorSpace').value),
+                    quality: parseInt(document.getElementById('quality').value),
+                    brightness: parseFloat(document.getElementById('brightness').value),
+                    halfSize: document.getElementById('halfSize').checked
+                };
+                
+                // Process the image
+                await currentImage.process(options);
+                
+                // Get and display the result
+                const dataUrl = await currentImage.getDataURL('png');
+                document.getElementById('imageOutput').src = dataUrl;
+                
+                const imageData = currentImage.getImageData();
+                document.getElementById('imageInfo').innerHTML = 
+                    `<p>Processed image: ${imageData.width} × ${imageData.height} pixels</p>`;
+                
+                document.getElementById('results').style.display = 'grid';
+                document.getElementById('downloadBtn').disabled = false;
+                document.getElementById('previewBtn').disabled = false;
+                status.innerHTML = 'Processing complete';
+            } catch (error) {
+                status.innerHTML = `<span class="error">Processing error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+        
+        // Display metadata
+        function displayMetadata(metadata) {
+            const formatted = JSON.stringify(metadata, null, 2);
+            document.getElementById('metadata').textContent = formatted;
+        }
+        
+        // Brightness slider
+        document.getElementById('brightness').addEventListener('input', (e) => {
+            document.getElementById('brightnessValue').textContent = e.target.value;
+        });
+        
+        // JPEG quality slider
+        document.getElementById('jpegQuality').addEventListener('input', (e) => {
+            document.getElementById('jpegQualityValue').textContent = e.target.value;
+        });
+        
+        // Download JPEG button
+        document.getElementById('downloadBtn').addEventListener('click', async () => {
+            if (!currentImage || !currentImage.processed) {
+                alert('No processed image available');
+                return;
+            }
+            
+            const btn = document.getElementById('downloadBtn');
+            const status = document.getElementById('status');
+            
+            btn.disabled = true;
+            status.innerHTML = 'Generating JPEG...<span class="loading"></span>';
+            
+            try {
+                // Get JPEG quality from slider (convert to 0-1 range)
+                const quality = parseInt(document.getElementById('jpegQuality').value) / 100;
+                
+                // Generate JPEG data URL
+                const dataUrl = await currentImage.getDataURL('jpeg', quality);
+                
+                // Get metadata for filename
+                const metadata = currentImage.getMetadata();
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const filename = `${metadata.make}_${metadata.model}_${timestamp}.jpg`
+                    .replace(/\s+/g, '_')
+                    .replace(/[^\w\-_.]/g, '');
+                
+                // Create download link
+                const link = document.createElement('a');
+                link.href = dataUrl;
+                link.download = filename;
+                link.style.display = 'none';
+                
+                // Trigger download
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                status.innerHTML = `JPEG saved as: ${filename}`;
+                
+                // Show file info
+                const imageData = currentImage.getImageData();
+                const fileSize = Math.round(dataUrl.length * 0.75 / 1024); // Rough estimate
+                document.getElementById('imageInfo').innerHTML = 
+                    `<p>Processed image: ${imageData.width} × ${imageData.height} pixels</p>
+                     <p>JPEG quality: ${Math.round(quality * 100)}% (~${fileSize}KB)</p>
+                     <p class="info">File downloaded: ${filename}</p>`;
+                
+            } catch (error) {
+                status.innerHTML = `<span class="error">Download error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+        
+        // Preview JPEG button
+        document.getElementById('previewBtn').addEventListener('click', async () => {
+            if (!currentImage || !currentImage.processed) {
+                alert('No processed image available');
+                return;
+            }
+            
+            const btn = document.getElementById('previewBtn');
+            const status = document.getElementById('status');
+            
+            btn.disabled = true;
+            status.innerHTML = 'Generating JPEG preview...<span class="loading"></span>';
+            
+            try {
+                // Get JPEG quality from slider
+                const quality = parseInt(document.getElementById('jpegQuality').value) / 100;
+                
+                // Generate JPEG data URL
+                const dataUrl = await currentImage.getDataURL('jpeg', quality);
+                
+                // Update the displayed image
+                document.getElementById('imageOutput').src = dataUrl;
+                
+                // Update image info
+                const imageData = currentImage.getImageData();
+                const fileSize = Math.round(dataUrl.length * 0.75 / 1024); // Rough estimate
+                document.getElementById('imageInfo').innerHTML = 
+                    `<p>JPEG Preview: ${imageData.width} × ${imageData.height} pixels</p>
+                     <p>Quality: ${Math.round(quality * 100)}% (~${fileSize}KB)</p>
+                     <p class="info">Preview updated with current quality settings</p>`;
+                
+                status.innerHTML = 'JPEG preview ready';
+                
+            } catch (error) {
+                status.innerHTML = `<span class="error">Preview error: ${error.message}</span>`;
+            } finally {
+                btn.disabled = false;
+            }
+        });
+        
+        // Initialize on load
+        init();
+    </script>
+</body>
+</html>
