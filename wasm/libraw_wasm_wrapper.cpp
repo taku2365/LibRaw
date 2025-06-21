@@ -334,6 +334,79 @@ public:
         processor.imgdata.params.half_size = half ? 1 : 0;
     }
     
+    // Extended parameters for more control
+    void setHighlight(int mode) {
+        // Highlight recovery: 0=clip, 1=unclip, 2=blend, 3-9=rebuild
+        processor.imgdata.params.highlight = mode;
+    }
+    
+    void setGamma(float g1, float g2) {
+        // Gamma curve parameters
+        processor.imgdata.params.gamm[0] = g1;
+        processor.imgdata.params.gamm[1] = g2;
+    }
+    
+    void setNoiseThreshold(float threshold) {
+        // Noise reduction threshold
+        processor.imgdata.params.threshold = threshold;
+    }
+    
+    void setMedianPasses(int passes) {
+        // Median filter passes for noise reduction
+        processor.imgdata.params.med_passes = passes;
+    }
+    
+    void setExposure(float shift, float preserve) {
+        // Exposure correction
+        processor.imgdata.params.exp_shift = shift;
+        processor.imgdata.params.exp_preser = preserve;
+    }
+    
+    void setAutoBright(bool enabled, float threshold) {
+        // Auto brightness control
+        processor.imgdata.params.no_auto_bright = enabled ? 0 : 1;
+        processor.imgdata.params.auto_bright_thr = threshold;
+    }
+    
+    void setCustomWB(float r, float g1, float g2, float b) {
+        // Custom white balance multipliers
+        processor.imgdata.params.user_mul[0] = r;
+        processor.imgdata.params.user_mul[1] = g1;
+        processor.imgdata.params.user_mul[2] = g2;
+        processor.imgdata.params.user_mul[3] = b;
+    }
+    
+    void setFourColorRGB(bool enabled) {
+        // Use separate greens for better color
+        processor.imgdata.params.four_color_rgb = enabled ? 1 : 0;
+    }
+    
+    void setDCBIterations(int iterations) {
+        // DCB demosaic quality
+        processor.imgdata.params.dcb_iterations = iterations;
+    }
+    
+    void setDCBEnhance(bool enabled) {
+        // DCB false color suppression
+        processor.imgdata.params.dcb_enhance_fl = enabled ? 1 : 0;
+    }
+    
+    void setOutputBPS(int bps) {
+        // Output bits per sample (8 or 16)
+        processor.imgdata.params.output_bps = bps;
+    }
+    
+    void setUserBlack(int level) {
+        // Manual black level
+        processor.imgdata.params.user_black = level;
+    }
+    
+    void setAberrationCorrection(float r, float b) {
+        // Chromatic aberration correction
+        processor.imgdata.params.aber[0] = r;
+        processor.imgdata.params.aber[2] = b;
+    }
+    
     // Get LibRaw version
     static std::string getVersion() {
         return std::string(LibRaw::version());
@@ -433,6 +506,19 @@ EMSCRIPTEN_BINDINGS(libraw_module) {
         .function("setBrightness", &LibRawWasm::setBrightness)
         .function("setQuality", &LibRawWasm::setQuality)
         .function("setHalfSize", &LibRawWasm::setHalfSize)
+        .function("setHighlight", &LibRawWasm::setHighlight)
+        .function("setGamma", &LibRawWasm::setGamma)
+        .function("setNoiseThreshold", &LibRawWasm::setNoiseThreshold)
+        .function("setMedianPasses", &LibRawWasm::setMedianPasses)
+        .function("setExposure", &LibRawWasm::setExposure)
+        .function("setAutoBright", &LibRawWasm::setAutoBright)
+        .function("setCustomWB", &LibRawWasm::setCustomWB)
+        .function("setFourColorRGB", &LibRawWasm::setFourColorRGB)
+        .function("setDCBIterations", &LibRawWasm::setDCBIterations)
+        .function("setDCBEnhance", &LibRawWasm::setDCBEnhance)
+        .function("setOutputBPS", &LibRawWasm::setOutputBPS)
+        .function("setUserBlack", &LibRawWasm::setUserBlack)
+        .function("setAberrationCorrection", &LibRawWasm::setAberrationCorrection)
         .function("setDebugMode", &LibRawWasm::setDebugMode)
         .function("getDebugMode", &LibRawWasm::getDebugMode)
         .function("getLastError", &LibRawWasm::getLastError)
@@ -456,4 +542,10 @@ EMSCRIPTEN_BINDINGS(libraw_module) {
     constant("QUALITY_AHD", 3);
     constant("QUALITY_DCB", 4);
     constant("QUALITY_DHT", 11);
+    
+    // Highlight recovery modes
+    constant("HIGHLIGHT_CLIP", 0);
+    constant("HIGHLIGHT_UNCLIP", 1);
+    constant("HIGHLIGHT_BLEND", 2);
+    constant("HIGHLIGHT_REBUILD", 3);
 }
