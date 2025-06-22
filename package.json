@@ -12,6 +12,8 @@
     "test": "npm run test:node && npm run test:browser-sim",
     "test:node": "node test/node.test.cjs",
     "test:extended": "node test/extended-params.test.cjs",
+    "test:advanced": "node test/advanced-features.test.cjs",
+    "test:color": "node test/color-adjustments.test.cjs",
     "test:browser-sim": "node test/browser-simulation.cjs",
     "test:playwright": "playwright test",
     "test:headed": "playwright test --headed",

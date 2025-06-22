@@ -7,18 +7,65 @@
 #include <vector>
 #include <string>
 #include <cstring>
+#include <algorithm>
 #include "libraw/libraw.h"
 
 using namespace emscripten;
+
+// Helper functions for color adjustments
+inline void rgbToHsl(float r, float g, float b, float& h, float& s, float& l) {
+    float max = std::max({r, g, b});
+    float min = std::min({r, g, b});
+    l = (max + min) / 2.0f;
+    
+    if (max == min) {
+        h = s = 0.0f; // achromatic
+    } else {
+        float d = max - min;
+        s = l > 0.5f ? d / (2.0f - max - min) : d / (max + min);
+        
+        if (max == r) {
+            h = (g - b) / d + (g < b ? 6.0f : 0.0f);
+        } else if (max == g) {
+            h = (b - r) / d + 2.0f;
+        } else {
+            h = (r - g) / d + 4.0f;
+        }
+        h /= 6.0f;
+    }
+}
+
+inline void hslToRgb(float h, float s, float l, float& r, float& g, float& b) {
+    if (s == 0.0f) {
+        r = g = b = l; // achromatic
+    } else {
+        auto hue2rgb = [](float p, float q, float t) {
+            if (t < 0.0f) t += 1.0f;
+            if (t > 1.0f) t -= 1.0f;
+            if (t < 1.0f/6.0f) return p + (q - p) * 6.0f * t;
+            if (t < 1.0f/2.0f) return q;
+            if (t < 2.0f/3.0f) return p + (q - p) * (2.0f/3.0f - t) * 6.0f;
+            return p;
+        };
+        
+        float q = l < 0.5f ? l * (1.0f + s) : l + s - l * s;
+        float p = 2.0f * l - q;
+        r = hue2rgb(p, q, h + 1.0f/3.0f);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1.0f/3.0f);
+    }
+}
 
 class LibRawWasm {
 private:
     LibRaw processor;
     bool isLoaded;
     bool debugMode;
+    float custom_saturation;
+    float custom_vibrance;
 
 public:
-    LibRawWasm() : isLoaded(false), debugMode(false) {}
+    LibRawWasm() : isLoaded(false), debugMode(false), custom_saturation(0.0f), custom_vibrance(0.0f) {}
     
     ~LibRawWasm() {
         if (isLoaded) {
@@ -230,15 +277,63 @@ public:
         result.set("colors", image->colors);
         result.set("bits", image->bits);
         
-        // Copy image data to JavaScript array
-        size_t dataSize = image->data_size;
-        val data = val::global("Uint8Array").new_(dataSize);
-        
-        // Use typed memory view for safe copying
-        val dataView = val(typed_memory_view(dataSize, image->data));
-        data.call<void>("set", dataView);
-        
-        result.set("data", data);
+        // Apply saturation and vibrance adjustments if needed
+        if (custom_saturation != 0.0f || custom_vibrance != 0.0f) {
+            // Create a copy of the image data for modification
+            std::vector<unsigned char> modifiedData(image->data, image->data + image->data_size);
+            
+            // Process each pixel
+            int pixelCount = image->width * image->height;
+            int bytesPerPixel = image->colors * (image->bits / 8);
+            
+            for (int i = 0; i < pixelCount; i++) {
+                int offset = i * bytesPerPixel;
+                
+                // Get RGB values (assuming 8-bit per channel)
+                float r = modifiedData[offset] / 255.0f;
+                float g = modifiedData[offset + 1] / 255.0f;
+                float b = modifiedData[offset + 2] / 255.0f;
+                
+                // Convert to HSL
+                float h, s, l;
+                rgbToHsl(r, g, b, h, s, l);
+                
+                // Apply saturation
+                if (custom_saturation != 0.0f) {
+                    s = std::max(0.0f, std::min(1.0f, s * (1.0f + custom_saturation)));
+                }
+                
+                // Apply vibrance (less aggressive on already saturated colors)
+                if (custom_vibrance != 0.0f) {
+                    float vibrance_amount = custom_vibrance * (1.0f - s);
+                    s = std::max(0.0f, std::min(1.0f, s * (1.0f + vibrance_amount)));
+                }
+                
+                // Convert back to RGB
+                hslToRgb(h, s, l, r, g, b);
+                
+                // Write back
+                modifiedData[offset] = (unsigned char)(r * 255.0f);
+                modifiedData[offset + 1] = (unsigned char)(g * 255.0f);
+                modifiedData[offset + 2] = (unsigned char)(b * 255.0f);
+            }
+            
+            // Copy modified data to JavaScript array
+            val data = val::global("Uint8Array").new_(image->data_size);
+            val dataView = val(typed_memory_view(image->data_size, modifiedData.data()));
+            data.call<void>("set", dataView);
+            result.set("data", data);
+        } else {
+            // Copy original image data to JavaScript array
+            size_t dataSize = image->data_size;
+            val data = val::global("Uint8Array").new_(dataSize);
+            
+            // Use typed memory view for safe copying
+            val dataView = val(typed_memory_view(dataSize, image->data));
+            data.call<void>("set", dataView);
+            
+            result.set("data", data);
+        }
         
         LibRaw::dcraw_clear_mem(image);
         
@@ -307,6 +402,84 @@ public:
         }
         
         return val::null();
+    }
+    
+    // Get 4-channel RAW data (RGBG) - similar to 4channels.cpp sample
+    val get4ChannelData() {
+        if (!isLoaded) return val::null();
+        
+        // Ensure raw2image has been called
+        int ret = processor.raw2image();
+        if (ret != LIBRAW_SUCCESS) {
+            if (debugMode) {
+                printf("[DEBUG] LibRaw: raw2image failed: %s\n", libraw_strerror(ret));
+            }
+            return val::null();
+        }
+        
+        if (!processor.imgdata.image) {
+            if (debugMode) printf("[DEBUG] LibRaw: No 4-channel image data available\n");
+            return val::null();
+        }
+        
+        int width = processor.imgdata.sizes.iwidth;
+        int height = processor.imgdata.sizes.iheight;
+        int colors = processor.imgdata.idata.colors;
+        
+        if (debugMode) {
+            printf("[DEBUG] LibRaw: 4-channel data: %dx%d, %d colors\n", width, height, colors);
+        }
+        
+        val result = val::object();
+        result.set("width", width);
+        result.set("height", height);
+        result.set("colors", colors);
+        
+        // Create separate arrays for each channel
+        val channels = val::array();
+        
+        for (int c = 0; c < colors && c < 4; c++) {
+            size_t channelSize = width * height * sizeof(unsigned short);
+            val channelData = val::global("Uint16Array").new_(width * height);
+            
+            // Extract channel data
+            for (int i = 0; i < width * height; i++) {
+                channelData.call<void>("set", i, processor.imgdata.image[i][c]);
+            }
+            
+            channels.call<void>("push", channelData);
+        }
+        
+        result.set("channels", channels);
+        return result;
+    }
+    
+    // Get RAW Bayer data (single channel) - for advanced processing
+    val getRawBayerData() {
+        if (!isLoaded) return val::null();
+        
+        if (!processor.imgdata.rawdata.raw_image) {
+            if (debugMode) printf("[DEBUG] LibRaw: No RAW Bayer data available\n");
+            return val::null();
+        }
+        
+        int width = processor.imgdata.sizes.raw_width;
+        int height = processor.imgdata.sizes.raw_height;
+        
+        val result = val::object();
+        result.set("width", width);
+        result.set("height", height);
+        result.set("filters", (int)processor.imgdata.idata.filters);
+        
+        // Copy RAW data
+        size_t dataSize = width * height;
+        val rawData = val::global("Uint16Array").new_(dataSize);
+        
+        val dataView = val(typed_memory_view(dataSize, processor.imgdata.rawdata.raw_image));
+        rawData.call<void>("set", dataView);
+        
+        result.set("data", rawData);
+        return result;
     }
     
     // Set processing parameters
@@ -405,6 +578,56 @@ public:
         // Chromatic aberration correction
         processor.imgdata.params.aber[0] = r;
         processor.imgdata.params.aber[2] = b;
+    }
+    
+    // Additional processing parameters from samples
+    void setShotSelect(int shot) {
+        // Select specific shot from multi-shot RAW files
+        processor.imgdata.rawparams.shot_select = shot;
+    }
+    
+    void setCropArea(int x1, int y1, int x2, int y2) {
+        // Set crop area (similar to dcraw -B x1 y1 x2 y2)
+        processor.imgdata.params.cropbox[0] = x1;
+        processor.imgdata.params.cropbox[1] = y1;
+        processor.imgdata.params.cropbox[2] = x2;
+        processor.imgdata.params.cropbox[3] = y2;
+    }
+    
+    void setGreyBox(int x1, int y1, int x2, int y2) {
+        // Set grey box area for white balance (similar to dcraw -A x1 y1 x2 y2)
+        processor.imgdata.params.greybox[0] = x1;
+        processor.imgdata.params.greybox[1] = y1;
+        processor.imgdata.params.greybox[2] = x2;
+        processor.imgdata.params.greybox[3] = y2;
+    }
+    
+    void setUserFlip(int flip) {
+        // Set rotation/flip: 0=none, 3=180, 5=90CCW, 6=90CW
+        processor.imgdata.params.user_flip = flip;
+    }
+    
+    void setNoAutoBright(bool disable) {
+        // Disable automatic brightness adjustment
+        processor.imgdata.params.no_auto_bright = disable ? 1 : 0;
+    }
+    
+    void setOutputTiff(bool tiff) {
+        // Output TIFF instead of PPM
+        processor.imgdata.params.output_tiff = tiff ? 1 : 0;
+    }
+    
+    // Color adjustment methods (applied in post-processing)
+    void setSaturation(float saturation) {
+        // Saturation adjustment: -100 to +100
+        // Will be applied during RGB conversion
+        custom_saturation = saturation / 100.0f; // Convert to -1.0 to 1.0
+    }
+    
+    void setVibrance(float vibrance) {
+        // Vibrance adjustment: -100 to +100
+        // Similar to saturation but protects skin tones
+        custom_vibrance = vibrance / 100.0f; // Convert to -1.0 to 1.0
     }
     
     // Get LibRaw version
@@ -519,6 +742,16 @@ EMSCRIPTEN_BINDINGS(libraw_module) {
         .function("setOutputBPS", &LibRawWasm::setOutputBPS)
         .function("setUserBlack", &LibRawWasm::setUserBlack)
         .function("setAberrationCorrection", &LibRawWasm::setAberrationCorrection)
+        .function("setShotSelect", &LibRawWasm::setShotSelect)
+        .function("setCropArea", &LibRawWasm::setCropArea)
+        .function("setGreyBox", &LibRawWasm::setGreyBox)
+        .function("setUserFlip", &LibRawWasm::setUserFlip)
+        .function("setNoAutoBright", &LibRawWasm::setNoAutoBright)
+        .function("setOutputTiff", &LibRawWasm::setOutputTiff)
+        .function("setSaturation", &LibRawWasm::setSaturation)
+        .function("setVibrance", &LibRawWasm::setVibrance)
+        .function("get4ChannelData", &LibRawWasm::get4ChannelData)
+        .function("getRawBayerData", &LibRawWasm::getRawBayerData)
         .function("setDebugMode", &LibRawWasm::setDebugMode)
         .function("getDebugMode", &LibRawWasm::getDebugMode)
         .function("getLastError", &LibRawWasm::getLastError)
@@ -548,4 +781,12 @@ EMSCRIPTEN_BINDINGS(libraw_module) {
     constant("HIGHLIGHT_UNCLIP", 1);
     constant("HIGHLIGHT_BLEND", 2);
     constant("HIGHLIGHT_REBUILD", 3);
+    
+    // Rotation/flip constants
+    constant("FLIP_NONE", 0);
+    constant("FLIP_HORIZONTAL", 1);
+    constant("FLIP_VERTICAL", 2);
+    constant("FLIP_180", 3);
+    constant("FLIP_90CCW", 5);
+    constant("FLIP_90CW", 6);
 }
