@@ -33,7 +33,7 @@ async function testColorAdjustments(LibRaw) {
     }
     
     // Load test image
-    const testFile = path.join(__dirname, 'test-images/test.arw');
+    const testFile = path.join(__dirname, '../test-image/DSC00085.ARW');
     if (!fs.existsSync(testFile)) {
         log('ERROR', 'Test file not found: ' + testFile);
         return false;
