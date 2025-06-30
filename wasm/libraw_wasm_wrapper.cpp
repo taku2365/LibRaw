@@ -710,6 +710,202 @@ public:
         
         return info;
     }
+    
+    // MetaISP Integration Methods
+    
+    // Get Bayer channels for MetaISP (4 channels: R, G1, G2, B)
+    val getBayerChannelsForMetaISP() {
+        if (!isLoaded) return val::null();
+        
+        // Check CFA pattern
+        if (processor.imgdata.idata.cdesc[processor.imgdata.idata.fc(0, 0)] != 'R') {
+            if (debugMode) {
+                printf("[DEBUG] LibRaw: Unsupported CFA pattern for MetaISP. Only RGGB is supported.\n");
+            }
+            return val::null();
+        }
+        
+        int raw_width = processor.imgdata.sizes.raw_width;
+        int raw_height = processor.imgdata.sizes.raw_height;
+        int output_width = raw_width / 2;
+        int output_height = raw_height / 2;
+        
+        if (debugMode) {
+            printf("[DEBUG] LibRaw: Extracting Bayer channels for MetaISP: %dx%d -> %dx%d\n", 
+                   raw_width, raw_height, output_width, output_height);
+        }
+        
+        val result = val::object();
+        result.set("width", output_width);
+        result.set("height", output_height);
+        
+        // Create Float32Array for 4 channels
+        size_t channelSize = output_width * output_height;
+        val channelData = val::global("Float32Array").new_(4 * channelSize);
+        
+        float max_val = processor.imgdata.color.maximum ? processor.imgdata.color.maximum : 65535.0f;
+        
+        // Extract Bayer pattern
+        for (int row = 0; row < output_height; row++) {
+            for (int col = 0; col < output_width; col++) {
+                int idx = row * output_width + col;
+                int raw_row = row * 2;
+                int raw_col = col * 2;
+                
+                // RGGB pattern
+                // R  G1
+                // G2 B
+                channelData.call<void>("set", 0 * channelSize + idx, 
+                    processor.imgdata.rawdata.raw_image[raw_row * raw_width + raw_col] / max_val);  // R
+                channelData.call<void>("set", 1 * channelSize + idx, 
+                    processor.imgdata.rawdata.raw_image[raw_row * raw_width + raw_col + 1] / max_val);  // G1
+                channelData.call<void>("set", 2 * channelSize + idx, 
+                    processor.imgdata.rawdata.raw_image[(raw_row + 1) * raw_width + raw_col] / max_val);  // G2
+                channelData.call<void>("set", 3 * channelSize + idx, 
+                    processor.imgdata.rawdata.raw_image[(raw_row + 1) * raw_width + raw_col + 1] / max_val);  // B
+            }
+        }
+        
+        result.set("data", channelData);
+        return result;
+    }
+    
+    // Get metadata for MetaISP in JSON format
+    val getMetaISPMetadata() {
+        if (!isLoaded) return val::null();
+        
+        val metadata = val::object();
+        
+        // Basic information
+        metadata.set("iso", processor.imgdata.other.iso_speed);
+        metadata.set("exposure", processor.imgdata.other.shutter);
+        metadata.set("aperture", processor.imgdata.other.aperture);
+        metadata.set("focal_length", processor.imgdata.other.focal_len);
+        
+        // White balance coefficients
+        val wb_coeffs = val::array();
+        for (int i = 0; i < 4; i++) {
+            wb_coeffs.call<void>("push", processor.imgdata.color.cam_mul[i]);
+        }
+        metadata.set("wb_coeffs", wb_coeffs);
+        
+        // Camera information
+        metadata.set("camera_make", std::string(processor.imgdata.idata.make));
+        metadata.set("camera_model", std::string(processor.imgdata.idata.model));
+        
+        // Device mapping for MetaISP
+        std::string model(processor.imgdata.idata.model);
+        int device_id = -1; // Unknown by default
+        
+        if (model.find("iPhone") != std::string::npos) {
+            device_id = 2;  // iPhone
+        } else if (model.find("Samsung") != std::string::npos || 
+                   model.find("Galaxy") != std::string::npos) {
+            device_id = 1;  // Samsung
+        } else if (model.find("Pixel") != std::string::npos) {
+            device_id = 0;  // Pixel
+        }
+        
+        metadata.set("device_id", device_id);
+        
+        // Image dimensions
+        metadata.set("raw_width", processor.imgdata.sizes.raw_width);
+        metadata.set("raw_height", processor.imgdata.sizes.raw_height);
+        metadata.set("width", processor.imgdata.sizes.width);
+        metadata.set("height", processor.imgdata.sizes.height);
+        
+        // Black level and maximum
+        metadata.set("black_level", processor.imgdata.color.black);
+        metadata.set("maximum", processor.imgdata.color.maximum);
+        
+        // CFA pattern
+        std::string cfa_pattern;
+        cfa_pattern += processor.imgdata.idata.cdesc[processor.imgdata.idata.fc(0, 0)];
+        cfa_pattern += processor.imgdata.idata.cdesc[processor.imgdata.idata.fc(0, 1)];
+        cfa_pattern += processor.imgdata.idata.cdesc[processor.imgdata.idata.fc(1, 0)];
+        cfa_pattern += processor.imgdata.idata.cdesc[processor.imgdata.idata.fc(1, 1)];
+        metadata.set("cfa_pattern", cfa_pattern);
+        
+        return metadata;
+    }
+    
+    // Get bilinear interpolated RGB for MetaISP (raw_full input)
+    val getBilinearRGB() {
+        if (!isLoaded) return val::null();
+        
+        // Save current settings
+        int saved_quality = processor.imgdata.params.user_qual;
+        int saved_half_size = processor.imgdata.params.half_size;
+        float saved_gamm[2] = {processor.imgdata.params.gamm[0], processor.imgdata.params.gamm[1]};
+        
+        // Process with simple bilinear interpolation
+        processor.imgdata.params.half_size = 0;
+        processor.imgdata.params.use_camera_wb = 1;
+        processor.imgdata.params.use_auto_wb = 0;
+        processor.imgdata.params.output_color = 1;  // sRGB
+        processor.imgdata.params.output_bps = 16;
+        processor.imgdata.params.gamm[0] = 1.0;  // Linear output
+        processor.imgdata.params.gamm[1] = 1.0;
+        processor.imgdata.params.user_qual = 0;  // Bilinear
+        processor.imgdata.params.no_auto_bright = 1;
+        
+        int ret = processor.dcraw_process();
+        if (ret != LIBRAW_SUCCESS) {
+            if (debugMode) {
+                printf("[DEBUG] LibRaw: Failed to process bilinear RGB: %s\n", libraw_strerror(ret));
+            }
+            // Restore settings
+            processor.imgdata.params.user_qual = saved_quality;
+            processor.imgdata.params.half_size = saved_half_size;
+            processor.imgdata.params.gamm[0] = saved_gamm[0];
+            processor.imgdata.params.gamm[1] = saved_gamm[1];
+            return val::null();
+        }
+        
+        libraw_processed_image_t* image = processor.dcraw_make_mem_image(&ret);
+        if (!image) {
+            if (debugMode) {
+                printf("[DEBUG] LibRaw: Failed to create bilinear RGB image\n");
+            }
+            // Restore settings
+            processor.imgdata.params.user_qual = saved_quality;
+            processor.imgdata.params.half_size = saved_half_size;
+            processor.imgdata.params.gamm[0] = saved_gamm[0];
+            processor.imgdata.params.gamm[1] = saved_gamm[1];
+            return val::null();
+        }
+        
+        int width = image->width;
+        int height = image->height;
+        
+        val result = val::object();
+        result.set("width", width);
+        result.set("height", height);
+        
+        // Create Float32Array for RGB data
+        size_t pixelCount = width * height;
+        val rgbData = val::global("Float32Array").new_(3 * pixelCount);
+        
+        // Convert to float RGB
+        unsigned char* data = image->data;
+        for (int i = 0; i < pixelCount; i++) {
+            rgbData.call<void>("set", 0 * pixelCount + i, data[i * 3 + 0] / 255.0f);  // R
+            rgbData.call<void>("set", 1 * pixelCount + i, data[i * 3 + 1] / 255.0f);  // G
+            rgbData.call<void>("set", 2 * pixelCount + i, data[i * 3 + 2] / 255.0f);  // B
+        }
+        
+        result.set("data", rgbData);
+        
+        LibRaw::dcraw_clear_mem(image);
+        
+        // Restore settings
+        processor.imgdata.params.user_qual = saved_quality;
+        processor.imgdata.params.half_size = saved_half_size;
+        processor.imgdata.params.gamm[0] = saved_gamm[0];
+        processor.imgdata.params.gamm[1] = saved_gamm[1];
+        
+        return result;
+    }
 };
 
 // Emscripten bindings
@@ -756,6 +952,9 @@ EMSCRIPTEN_BINDINGS(libraw_module) {
         .function("getDebugMode", &LibRawWasm::getDebugMode)
         .function("getLastError", &LibRawWasm::getLastError)
         .function("getProcessingInfo", &LibRawWasm::getProcessingInfo)
+        .function("getBayerChannelsForMetaISP", &LibRawWasm::getBayerChannelsForMetaISP)
+        .function("getMetaISPMetadata", &LibRawWasm::getMetaISPMetadata)
+        .function("getBilinearRGB", &LibRawWasm::getBilinearRGB)
         .class_function("getVersion", &LibRawWasm::getVersion)
         .class_function("getCameraCount", &LibRawWasm::getCameraCount)
         .class_function("getCameraList", &LibRawWasm::getCameraList);
