@@ -6,9 +6,9 @@ set -e
 echo "Building LibRaw for WebAssembly..."
 
 # Check if local emsdk exists and source it
-if [ -f "../emsdk/emsdk_env.sh" ]; then
+if [ -f "../../emsdk/emsdk_env.sh" ]; then
     echo "Activating local Emscripten SDK..."
-    source ../emsdk/emsdk_env.sh
+    source ../../emsdk/emsdk_env.sh
 fi
 
 # Check if Emscripten is available
